@@ -24,6 +24,9 @@ export interface SearchMatch {
   selected: boolean
   relevance?: number
   reason?: string
+  suggestedReplacement?: string
+  contextualReplacement?: string
+  approved?: boolean
 }
 
 export interface ReplacementOperation {
@@ -39,4 +42,17 @@ export interface ProcessingStatus {
   completed: number
   current?: string
   errors: string[]
+}
+
+export interface ReplacementPreview {
+  documentId: string
+  documentName: string
+  matches: SearchMatch[]
+  previewContent: string
+}
+
+export interface ReviewState {
+  isReviewing: boolean
+  previews: ReplacementPreview[]
+  currentPreviewIndex: number
 }

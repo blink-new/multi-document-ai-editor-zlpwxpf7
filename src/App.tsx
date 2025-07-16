@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { FileText, Upload, Search, Settings } from 'lucide-react'
+import { FileText, Upload, Search, Settings, AlertCircle } from 'lucide-react'
 import { Button } from './components/ui/button'
+import { Card } from './components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Toaster } from './components/ui/toaster'
 import { DocumentUpload } from './components/DocumentUpload'
@@ -176,25 +177,31 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center space-x-3">
-            <FileText className="w-8 h-8 text-primary" />
+      <header className="border-b bg-gradient-to-r from-background to-muted/30 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-6 py-5">
+          <div className="flex items-center space-x-4">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <FileText className="w-6 h-6 text-primary" />
+            </div>
             <div>
-              <h1 className="text-xl font-bold">Multi-Document AI Editor</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                Multi-Document AI Editor
+              </h1>
               <p className="text-sm text-muted-foreground">
-                AI-powered document search and replace
+                AI-powered contextual search and replace across documents
               </p>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-muted-foreground">
-              Welcome, {user.email}
-            </span>
+            <div className="text-right">
+              <p className="text-sm font-medium">{user.email}</p>
+              <p className="text-xs text-muted-foreground">{documents.length} documents loaded</p>
+            </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => blink.auth.logout()}
+              className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20"
             >
               Sign Out
             </Button>
@@ -205,28 +212,30 @@ function App() {
       {/* Main Content */}
       <div className="flex h-[calc(100vh-73px)]">
         {/* Left Panel - Navigation and Tools */}
-        <div className="w-96 border-r bg-card">
+        <div className="w-96 border-r bg-gradient-to-b from-muted/20 to-background">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-            <TabsList className="grid w-full grid-cols-4 m-4">
-              <TabsTrigger value="upload" className="text-xs">
-                <Upload className="w-4 h-4 mr-1" />
-                Upload
-              </TabsTrigger>
-              <TabsTrigger value="library" className="text-xs">
-                <FileText className="w-4 h-4 mr-1" />
-                Library
-              </TabsTrigger>
-              <TabsTrigger value="search" className="text-xs">
-                <Search className="w-4 h-4 mr-1" />
-                Search
-              </TabsTrigger>
-              <TabsTrigger value="preview" className="text-xs">
-                <Settings className="w-4 h-4 mr-1" />
-                Preview
-              </TabsTrigger>
-            </TabsList>
+            <div className="p-4 border-b bg-card/50">
+              <TabsList className="grid w-full grid-cols-4 bg-muted/50">
+                <TabsTrigger value="upload" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Upload className="w-4 h-4 mr-1" />
+                  Upload
+                </TabsTrigger>
+                <TabsTrigger value="library" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <FileText className="w-4 h-4 mr-1" />
+                  Library
+                </TabsTrigger>
+                <TabsTrigger value="search" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Search className="w-4 h-4 mr-1" />
+                  Search
+                </TabsTrigger>
+                <TabsTrigger value="preview" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Settings className="w-4 h-4 mr-1" />
+                  Settings
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-            <div className="h-[calc(100%-60px)]">
+            <div className="h-[calc(100%-80px)]">
               <TabsContent value="upload" className="h-full m-0 p-4">
                 <div className="space-y-4">
                   <div>
@@ -258,45 +267,103 @@ function App() {
 
               <TabsContent value="preview" className="h-full m-0">
                 <div className="h-full p-4">
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <div>
-                      <h2 className="font-semibold text-lg mb-2">Document Settings</h2>
+                      <h2 className="font-semibold text-lg mb-2 flex items-center">
+                        <Settings className="w-5 h-5 mr-2" />
+                        Settings & Export
+                      </h2>
                       <p className="text-sm text-muted-foreground">
-                        Manage document settings and export options
+                        Manage your documents and export options
                       </p>
                     </div>
                     
-                    {documents.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="p-4 bg-muted rounded-lg">
-                          <h3 className="font-medium mb-2">Export Options</h3>
+                    {documents.length > 0 ? (
+                      <div className="space-y-4">
+                        <Card className="p-4">
+                          <h3 className="font-medium mb-3 flex items-center">
+                            <FileText className="w-4 h-4 mr-2" />
+                            Document Statistics
+                          </h3>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Total:</span>
+                                <span className="font-medium">{documents.length}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Ready:</span>
+                                <span className="font-medium text-green-600">
+                                  {documents.filter(d => d.status === 'ready').length}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Processing:</span>
+                                <span className="font-medium text-yellow-600">
+                                  {documents.filter(d => d.status === 'processing').length}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Errors:</span>
+                                <span className="font-medium text-red-600">
+                                  {documents.filter(d => d.status === 'error').length}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Total Size:</span>
+                                <span className="font-medium">
+                                  {(documents.reduce((sum, doc) => sum + doc.size, 0) / 1024 / 1024).toFixed(2)} MB
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                        
+                        <Card className="p-4">
+                          <h3 className="font-medium mb-3">Export Options</h3>
                           <div className="space-y-2">
-                            <Button variant="outline" size="sm" className="w-full">
-                              Export All as ZIP
+                            <Button variant="outline" size="sm" className="w-full justify-start">
+                              <FileText className="w-4 h-4 mr-2" />
+                              Export All Documents
                             </Button>
-                            <Button variant="outline" size="sm" className="w-full">
+                            <Button variant="outline" size="sm" className="w-full justify-start">
+                              <Search className="w-4 h-4 mr-2" />
                               Export Search Results
                             </Button>
                           </div>
-                        </div>
-                        
-                        <div className="p-4 bg-muted rounded-lg">
-                          <h3 className="font-medium mb-2">Statistics</h3>
-                          <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span>Total Documents:</span>
-                              <span>{documents.length}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Ready Documents:</span>
-                              <span>{documents.filter(d => d.status === 'ready').length}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Total Size:</span>
-                              <span>
-                                {(documents.reduce((sum, doc) => sum + doc.size, 0) / 1024 / 1024).toFixed(2)} MB
-                              </span>
-                            </div>
+                        </Card>
+
+                        <Card className="p-4">
+                          <h3 className="font-medium mb-3">Quick Actions</h3>
+                          <div className="space-y-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to clear all documents?')) {
+                                  onDocumentsUpdated([])
+                                  setSelectedDocument(null)
+                                }
+                              }}
+                            >
+                              <AlertCircle className="w-4 h-4 mr-2" />
+                              Clear All Documents
+                            </Button>
+                          </div>
+                        </Card>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center space-y-4">
+                          <Settings className="w-16 h-16 text-muted-foreground mx-auto" />
+                          <div>
+                            <h3 className="text-lg font-medium">No documents yet</h3>
+                            <p className="text-sm text-muted-foreground">
+                              Upload some documents to see settings and export options
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -309,7 +376,7 @@ function App() {
         </div>
 
         {/* Right Panel - Document Preview */}
-        <div className="flex-1 bg-background">
+        <div className="flex-1 bg-gradient-to-br from-background to-muted/10">
           <DocumentPreview 
             document={selectedDocument} 
             onDocumentUpdated={handleDocumentUpdated}
