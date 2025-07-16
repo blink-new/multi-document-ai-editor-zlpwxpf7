@@ -102,7 +102,18 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
         content = text || `Empty text file: ${file.name}`
       } else {
         // Use Blink's data extraction for other file types
-        console.log('Extracting content from file:', file.name)
+        console.log('Extracting content from file:', file.name, 'File object:', {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified
+        })
+        
+        // Double-check file is valid before extraction
+        if (!file || !file.name || file.size === 0) {
+          throw new Error('Invalid file object for extraction')
+        }
+        
         content = await blink.data.extractFromBlob(file)
         
         // If extraction returns empty or very short content, provide a fallback
@@ -112,7 +123,9 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
       }
     } catch (error) {
       console.error('Error extracting content from file:', error)
-      content = `File uploaded: ${file.name} (${fileType.toUpperCase()} format). Content extraction failed: ${error.message}. File is available for download.`
+      // Provide more detailed error information
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      content = `File uploaded: ${file.name} (${fileType.toUpperCase()} format). Content extraction failed: ${errorMessage}. File is available for download.`
     }
 
     const document: Document = {
@@ -126,27 +139,9 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
       url: publicUrl
     }
 
-    // Save document to database (if available)
-    try {
-      const user = await blink.auth.me()
-      if (user) {
-        await blink.db.documents.create({
-          id: fileId,
-          name: file.name,
-          type: getFileType(file.name),
-          size: file.size,
-          uploadedAt: new Date(),
-          content,
-          status: 'ready',
-          url: publicUrl,
-          userId: user.id
-        })
-        console.log('Document saved to database:', fileId)
-      }
-    } catch (dbError) {
-      console.warn('Could not save document to database:', dbError)
-      // Continue without database - documents will still work in memory
-    }
+    // Note: Database persistence disabled due to Turso limit
+    // Documents are now stored in localStorage via App.tsx handlers
+    console.log('Document processed successfully:', fileId)
 
     setUploadProgress(prev => {
       const newProgress = { ...prev }
@@ -157,7 +152,7 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
     return document
   }, [])
 
-  const handleFiles = useCallback(async (files: FileList) => {
+  const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) {
       toast({
         title: "No files selected",
@@ -168,7 +163,18 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
     }
 
     setIsProcessing(true)
-    const fileArray = Array.from(files)
+    const fileArray = Array.from(files).filter(file => isValidFileObject(file))
+    
+    if (fileArray.length === 0) {
+      toast({
+        title: "No valid files",
+        description: "No valid files were found to upload",
+        variant: "destructive"
+      })
+      setIsProcessing(false)
+      return
+    }
+    
     const documents: Document[] = []
 
     console.log('Processing files:', fileArray.map(f => ({ name: f.name, size: f.size, type: f.type })))
@@ -241,10 +247,25 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
     e.preventDefault()
     setIsDragging(false)
     
-    if (e.dataTransfer.files) {
-      handleFiles(e.dataTransfer.files)
+    try {
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        handleFiles(e.dataTransfer.files)
+      } else {
+        toast({
+          title: "No files dropped",
+          description: "Please drop valid files to upload",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error handling dropped files:', error)
+      toast({
+        title: "Drop error",
+        description: "There was an error processing the dropped files",
+        variant: "destructive"
+      })
     }
-  }, [handleFiles])
+  }, [handleFiles, toast])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -257,10 +278,21 @@ export function DocumentUpload({ onDocumentsUploaded }: DocumentUploadProps) {
   }, [])
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      handleFiles(e.target.files)
+    try {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFiles(e.target.files)
+      }
+      // Reset the input value to allow re-uploading the same file
+      e.target.value = ''
+    } catch (error) {
+      console.error('Error handling file input:', error)
+      toast({
+        title: "File input error",
+        description: "There was an error processing the selected files",
+        variant: "destructive"
+      })
     }
-  }, [handleFiles])
+  }, [handleFiles, toast])
 
   const hasActiveUploads = Object.keys(uploadProgress).length > 0
 

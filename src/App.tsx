@@ -22,31 +22,21 @@ function App() {
       setUser(state.user)
       setLoading(state.isLoading)
       
-      // Load documents from database when user is authenticated
+      // Load documents from localStorage when user is authenticated
       if (state.user && !state.isLoading) {
         try {
-          const dbDocuments = await blink.db.documents.list({
-            where: { userId: state.user.id },
-            orderBy: { uploadedAt: 'desc' }
-          })
-          
-          // Convert database documents to Document type
-          const documents: Document[] = dbDocuments.map(doc => ({
-            id: doc.id,
-            name: doc.name,
-            type: doc.type as Document['type'],
-            size: doc.size,
-            uploadedAt: new Date(doc.uploadedAt),
-            content: doc.content,
-            status: doc.status as Document['status'],
-            url: doc.url
-          }))
-          
-          setDocuments(documents)
-          console.log('Loaded documents from database:', documents.length)
+          const savedDocuments = localStorage.getItem(`documents_${state.user.id}`)
+          if (savedDocuments) {
+            const documents: Document[] = JSON.parse(savedDocuments).map((doc: any) => ({
+              ...doc,
+              uploadedAt: new Date(doc.uploadedAt)
+            }))
+            setDocuments(documents)
+            console.log('Loaded documents from localStorage:', documents.length)
+          }
         } catch (error) {
-          console.warn('Could not load documents from database:', error)
-          // Continue without database - user can still upload new documents
+          console.warn('Could not load documents from localStorage:', error)
+          // Continue with empty documents array
         }
       }
     })
@@ -54,7 +44,18 @@ function App() {
   }, [])
 
   const handleDocumentsUploaded = (newDocuments: Document[]) => {
-    setDocuments(prev => [...prev, ...newDocuments])
+    setDocuments(prev => {
+      const updated = [...prev, ...newDocuments]
+      // Save to localStorage
+      if (user) {
+        try {
+          localStorage.setItem(`documents_${user.id}`, JSON.stringify(updated))
+        } catch (error) {
+          console.warn('Could not save documents to localStorage:', error)
+        }
+      }
+      return updated
+    })
     if (newDocuments.length > 0) {
       setActiveTab('library')
     }
@@ -67,16 +68,18 @@ function App() {
 
   const handleDocumentDelete = async (documentId: string) => {
     try {
-      // Try to delete from database
-      try {
-        await blink.db.documents.delete(documentId)
-        console.log('Document deleted from database:', documentId)
-      } catch (dbError) {
-        console.warn('Could not delete document from database:', dbError)
-        // Continue without database - document will still be removed from memory
-      }
-      
-      setDocuments(prev => prev.filter(doc => doc.id !== documentId))
+      setDocuments(prev => {
+        const updated = prev.filter(doc => doc.id !== documentId)
+        // Save to localStorage
+        if (user) {
+          try {
+            localStorage.setItem(`documents_${user.id}`, JSON.stringify(updated))
+          } catch (error) {
+            console.warn('Could not save documents to localStorage:', error)
+          }
+        }
+        return updated
+      })
       if (selectedDocument?.id === documentId) {
         setSelectedDocument(null)
       }
@@ -87,6 +90,14 @@ function App() {
 
   const handleDocumentsUpdated = (updatedDocuments: Document[]) => {
     setDocuments(updatedDocuments)
+    // Save to localStorage
+    if (user) {
+      try {
+        localStorage.setItem(`documents_${user.id}`, JSON.stringify(updatedDocuments))
+      } catch (error) {
+        console.warn('Could not save documents to localStorage:', error)
+      }
+    }
     // Update selected document if it was modified
     if (selectedDocument) {
       const updatedSelected = updatedDocuments.find(doc => doc.id === selectedDocument.id)
@@ -97,9 +108,20 @@ function App() {
   }
 
   const handleDocumentUpdated = (updatedDocument: Document) => {
-    setDocuments(prev => prev.map(doc => 
-      doc.id === updatedDocument.id ? updatedDocument : doc
-    ))
+    setDocuments(prev => {
+      const updated = prev.map(doc => 
+        doc.id === updatedDocument.id ? updatedDocument : doc
+      )
+      // Save to localStorage
+      if (user) {
+        try {
+          localStorage.setItem(`documents_${user.id}`, JSON.stringify(updated))
+        } catch (error) {
+          console.warn('Could not save documents to localStorage:', error)
+        }
+      }
+      return updated
+    })
     if (selectedDocument?.id === updatedDocument.id) {
       setSelectedDocument(updatedDocument)
     }
