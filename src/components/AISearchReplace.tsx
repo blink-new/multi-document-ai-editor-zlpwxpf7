@@ -18,9 +18,10 @@ import type { Document, SearchResult, SearchMatch, ReplacementOperation, Process
 interface AISearchReplaceProps {
   documents: Document[]
   onDocumentsUpdated: (documents: Document[]) => void
+  onHighlightMatches?: (documentId: string, matches: SearchMatch[]) => void
 }
 
-export function AISearchReplace({ documents, onDocumentsUpdated }: AISearchReplaceProps) {
+export function AISearchReplace({ documents, onDocumentsUpdated, onHighlightMatches }: AISearchReplaceProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [replacementText, setReplacementText] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
@@ -67,41 +68,183 @@ export function AISearchReplace({ documents, onDocumentsUpdated }: AISearchRepla
           continue
         }
 
-        // Simple text search for now - in a real app, you'd use more sophisticated search
-        const content = document.content.toLowerCase()
-        const searchLower = searchTerm.toLowerCase()
-        const matches: SearchMatch[] = []
+        // Use AI for semantic search to find relevant content
+        try {
+          const searchPrompt = `
+You are helping to search through a document for content related to a search query. 
+Your task is to find all sentences, phrases, or paragraphs that are semantically related to the search term, not just exact matches.
 
-        let index = 0
-        let matchId = 0
-        while ((index = content.indexOf(searchLower, index)) !== -1) {
-          // Get context around the match
-          const contextStart = Math.max(0, index - 50)
-          const contextEnd = Math.min(content.length, index + searchTerm.length + 50)
-          const context = document.content.substring(contextStart, contextEnd)
-          
-          // Get line number
-          const beforeMatch = document.content.substring(0, index)
-          const lineNumber = beforeMatch.split('\n').length
+Document content:
+"""
+${document.content}
+"""
 
-          matches.push({
-            id: `match_${matchId++}`,
-            originalText: document.content.substring(index, index + searchTerm.length),
-            context,
-            position: index,
-            line: lineNumber,
-            selected: true
+Search query: "${searchTerm}"
+
+Instructions:
+1. Find all content that is semantically related to "${searchTerm}" - this includes:
+   - Exact matches
+   - Synonyms and related terms
+   - Concepts that are contextually related
+   - Different phrasings of the same idea
+   - References that might use different terminology
+
+2. For each match found, return a JSON array with objects containing:
+   - "text": the exact text from the document that matches
+   - "context": surrounding context (about 100 characters before and after)
+   - "relevance": a score from 1-10 indicating how relevant this match is
+   - "reason": brief explanation of why this text is relevant to the search
+
+3. Focus on complete sentences or meaningful phrases, not just individual words.
+
+4. Return only valid JSON array format.
+
+Example format:
+[
+  {
+    "text": "exact matching text from document",
+    "context": "...surrounding context from document...",
+    "relevance": 8,
+    "reason": "Direct reference to the search term"
+  }
+]
+
+Return the JSON array:
+          `
+
+          const { text: aiResponse } = await blink.ai.generateText({
+            prompt: searchPrompt,
+            model: 'gpt-4o-mini',
+            maxTokens: 2000
           })
 
-          index += searchTerm.length
-        }
+          // Parse AI response to extract matches
+          let aiMatches: any[] = []
+          try {
+            // Try to extract JSON from the response
+            const jsonMatch = aiResponse.match(/\[[\s\S]*\]/)
+            if (jsonMatch) {
+              aiMatches = JSON.parse(jsonMatch[0])
+            }
+          } catch (parseError) {
+            console.warn('Could not parse AI search results, falling back to simple search')
+          }
 
-        if (matches.length > 0) {
-          results.push({
-            documentId: document.id,
-            documentName: document.name,
-            matches
-          })
+          const matches: SearchMatch[] = []
+          let matchId = 0
+
+          // Process AI matches
+          if (aiMatches.length > 0) {
+            for (const aiMatch of aiMatches) {
+              if (aiMatch.relevance >= 6) { // Only include high-relevance matches
+                // Find the position of this text in the document
+                const position = document.content.indexOf(aiMatch.text)
+                if (position !== -1) {
+                  const beforeMatch = document.content.substring(0, position)
+                  const lineNumber = beforeMatch.split('\n').length
+
+                  matches.push({
+                    id: `ai_match_${matchId++}`,
+                    originalText: aiMatch.text,
+                    context: aiMatch.context,
+                    position,
+                    line: lineNumber,
+                    selected: true,
+                    relevance: aiMatch.relevance,
+                    reason: aiMatch.reason
+                  })
+                }
+              }
+            }
+          }
+
+          // Fallback to simple text search if AI didn't find enough matches
+          if (matches.length === 0) {
+            const content = document.content.toLowerCase()
+            const searchLower = searchTerm.toLowerCase()
+            let index = 0
+
+            while ((index = content.indexOf(searchLower, index)) !== -1) {
+              // Get context around the match
+              const contextStart = Math.max(0, index - 100)
+              const contextEnd = Math.min(content.length, index + searchTerm.length + 100)
+              const context = document.content.substring(contextStart, contextEnd)
+              
+              // Get line number
+              const beforeMatch = document.content.substring(0, index)
+              const lineNumber = beforeMatch.split('\n').length
+
+              matches.push({
+                id: `simple_match_${matchId++}`,
+                originalText: document.content.substring(index, index + searchTerm.length),
+                context,
+                position: index,
+                line: lineNumber,
+                selected: true,
+                relevance: 10,
+                reason: "Exact text match"
+              })
+
+              index += searchTerm.length
+            }
+          }
+
+          if (matches.length > 0) {
+            results.push({
+              documentId: document.id,
+              documentName: document.name,
+              matches: matches.sort((a, b) => (b.relevance || 0) - (a.relevance || 0)) // Sort by relevance
+            })
+
+            // Notify parent component about matches for highlighting
+            if (onHighlightMatches) {
+              onHighlightMatches(document.id, matches)
+            }
+          }
+
+        } catch (aiError) {
+          console.error('AI search error for document:', document.name, aiError)
+          // Fallback to simple search on AI error
+          const content = document.content.toLowerCase()
+          const searchLower = searchTerm.toLowerCase()
+          const matches: SearchMatch[] = []
+          let index = 0
+          let matchId = 0
+
+          while ((index = content.indexOf(searchLower, index)) !== -1) {
+            const contextStart = Math.max(0, index - 100)
+            const contextEnd = Math.min(content.length, index + searchTerm.length + 100)
+            const context = document.content.substring(contextStart, contextEnd)
+            
+            const beforeMatch = document.content.substring(0, index)
+            const lineNumber = beforeMatch.split('\n').length
+
+            matches.push({
+              id: `fallback_match_${matchId++}`,
+              originalText: document.content.substring(index, index + searchTerm.length),
+              context,
+              position: index,
+              line: lineNumber,
+              selected: true,
+              relevance: 10,
+              reason: "Exact text match"
+            })
+
+            index += searchTerm.length
+          }
+
+          if (matches.length > 0) {
+            results.push({
+              documentId: document.id,
+              documentName: document.name,
+              matches
+            })
+
+            // Notify parent component about matches for highlighting
+            if (onHighlightMatches) {
+              onHighlightMatches(document.id, matches)
+            }
+          }
         }
       }
 
@@ -119,8 +262,8 @@ export function AISearchReplace({ documents, onDocumentsUpdated }: AISearchRepla
       const skippedDocuments = documents.length - searchableDocuments
       
       toast({
-        title: "Search completed",
-        description: `Found ${totalMatches} matches across ${results.length} documents${skippedDocuments > 0 ? ` (${skippedDocuments} documents skipped - no searchable content)` : ''}`
+        title: "AI Search completed",
+        description: `Found ${totalMatches} semantic matches across ${results.length} documents${skippedDocuments > 0 ? ` (${skippedDocuments} documents skipped - no searchable content)` : ''}`
       })
     } catch (error) {
       console.error('Search error:', error)
@@ -295,24 +438,27 @@ Please provide the updated document content:
         <div>
           <h2 className="font-semibold text-lg mb-2">AI Search & Replace</h2>
           <p className="text-sm text-muted-foreground">
-            Search for terms across all documents and replace them intelligently
+            Use AI to find semantically related content and replace it intelligently
           </p>
         </div>
 
         <div className="space-y-3">
           <div>
-            <Label htmlFor="search-term">Search Term</Label>
+            <Label htmlFor="search-term">Search Query</Label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 id="search-term"
-                placeholder="Enter term to search for..."
+                placeholder="e.g., 'references to artificial intelligence' or 'climate change'"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               />
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              AI will find semantically related content, not just exact matches
+            </p>
           </div>
 
           <div>
@@ -359,7 +505,7 @@ Please provide the updated document content:
               ) : (
                 <Search className="w-4 h-4 mr-2" />
               )}
-              Search
+              AI Search
             </Button>
             <Button 
               onClick={handleReplace}
@@ -441,26 +587,43 @@ Please provide the updated document content:
                       {result.matches.map((match) => (
                         <div
                           key={match.id}
-                          className="flex items-start space-x-3 p-2 rounded border"
+                          className="flex items-start space-x-3 p-3 rounded border hover:bg-muted/50 transition-colors"
                         >
                           <Checkbox
                             checked={match.selected}
                             onCheckedChange={() => toggleMatchSelection(resultIndex, match.id)}
                             className="mt-1"
                           />
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Line {match.line}</span>
+                              {match.relevance && (
+                                <div className="flex items-center space-x-2">
+                                  <Badge 
+                                    variant={match.relevance >= 8 ? "default" : match.relevance >= 6 ? "secondary" : "outline"}
+                                    className="text-xs"
+                                  >
+                                    {match.relevance}/10
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
                             <p className="text-sm">
-                              <span className="text-muted-foreground">Line {match.line}:</span>{' '}
                               <span 
                                 className="search-highlight"
                                 dangerouslySetInnerHTML={{
                                   __html: match.context.replace(
-                                    new RegExp(searchTerm, 'gi'),
-                                    `<mark>$&</mark>`
+                                    new RegExp(match.originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                                    `<mark class="bg-yellow-200 px-1 rounded">$&</mark>`
                                   )
                                 }}
                               />
                             </p>
+                            {match.reason && (
+                              <p className="text-xs text-muted-foreground italic">
+                                {match.reason}
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}

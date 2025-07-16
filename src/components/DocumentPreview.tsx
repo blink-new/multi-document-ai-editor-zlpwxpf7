@@ -1,23 +1,55 @@
-import { useState } from 'react'
-import { FileText, Download, ExternalLink, Copy, Check } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { FileText, Download, ExternalLink, Copy, Check, Eye, EyeOff } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { ScrollArea } from './ui/scroll-area'
 import { Textarea } from './ui/textarea'
 import { useToast } from '../hooks/use-toast'
-import type { Document } from '../types/document'
+import type { Document, SearchMatch } from '../types/document'
 
 interface DocumentPreviewProps {
   document: Document | null
   onDocumentUpdated?: (document: Document) => void
+  highlightedMatches?: SearchMatch[]
 }
 
-export function DocumentPreview({ document, onDocumentUpdated }: DocumentPreviewProps) {
+export function DocumentPreview({ document, onDocumentUpdated, highlightedMatches }: DocumentPreviewProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
   const [copied, setCopied] = useState(false)
+  const [showHighlights, setShowHighlights] = useState(true)
   const { toast } = useToast()
+
+  // Function to highlight matched text in the document content
+  const getHighlightedContent = (content: string) => {
+    if (!highlightedMatches || highlightedMatches.length === 0 || !showHighlights) {
+      return content
+    }
+
+    let highlightedContent = content
+    
+    // Sort matches by position in reverse order to avoid position shifts
+    const sortedMatches = [...highlightedMatches].sort((a, b) => b.position - a.position)
+    
+    for (const match of sortedMatches) {
+      const before = highlightedContent.substring(0, match.position)
+      const matchText = highlightedContent.substring(match.position, match.position + match.originalText.length)
+      const after = highlightedContent.substring(match.position + match.originalText.length)
+      
+      const relevanceClass = match.relevance && match.relevance >= 8 
+        ? 'bg-yellow-300 border-yellow-500' 
+        : match.relevance && match.relevance >= 6 
+        ? 'bg-yellow-200 border-yellow-400' 
+        : 'bg-yellow-100 border-yellow-300'
+      
+      highlightedContent = before + 
+        `<mark class="${relevanceClass} px-1 py-0.5 rounded border-l-2 font-medium" title="Relevance: ${match.relevance}/10 - ${match.reason}">${matchText}</mark>` + 
+        after
+    }
+    
+    return highlightedContent
+  }
 
   if (!document) {
     return (
@@ -157,6 +189,21 @@ export function DocumentPreview({ document, onDocumentUpdated }: DocumentPreview
         </div>
 
         <div className="flex items-center space-x-2">
+          {highlightedMatches && highlightedMatches.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowHighlights(!showHighlights)}
+            >
+              {showHighlights ? (
+                <EyeOff className="w-4 h-4 mr-2" />
+              ) : (
+                <Eye className="w-4 h-4 mr-2" />
+              )}
+              {showHighlights ? 'Hide' : 'Show'} Highlights
+            </Button>
+          )}
+          
           <Button
             size="sm"
             variant="outline"
@@ -230,9 +277,18 @@ export function DocumentPreview({ document, onDocumentUpdated }: DocumentPreview
                 <Card className="h-full">
                   <ScrollArea className="h-full">
                     <div className="p-4">
-                      <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
-                        {document.content || 'No content available'}
-                      </pre>
+                      {highlightedMatches && highlightedMatches.length > 0 && showHighlights ? (
+                        <div 
+                          className="whitespace-pre-wrap text-sm font-mono leading-relaxed"
+                          dangerouslySetInnerHTML={{
+                            __html: getHighlightedContent(document.content || 'No content available')
+                          }}
+                        />
+                      ) : (
+                        <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
+                          {document.content || 'No content available'}
+                        </pre>
+                      )}
                     </div>
                   </ScrollArea>
                 </Card>

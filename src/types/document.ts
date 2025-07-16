@@ -22,6 +22,8 @@ export interface SearchMatch {
   position: number
   line: number
   selected: boolean
+  relevance?: number
+  reason?: string
 }
 
 export interface ReplacementOperation {

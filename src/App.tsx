@@ -8,7 +8,7 @@ import { DocumentLibrary } from './components/DocumentLibrary'
 import { AISearchReplace } from './components/AISearchReplace'
 import { DocumentPreview } from './components/DocumentPreview'
 import { blink } from './blink/client'
-import type { Document } from './types/document'
+import type { Document, SearchMatch } from './types/document'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -16,6 +16,8 @@ function App() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
   const [activeTab, setActiveTab] = useState('upload')
+  const [highlightedMatches, setHighlightedMatches] = useState<{[documentId: string]: SearchMatch[]}>({})
+  const [currentHighlights, setCurrentHighlights] = useState<SearchMatch[]>([])
 
   useEffect(() => {
     const unsubscribe = blink.auth.onAuthStateChanged(async (state) => {
@@ -64,6 +66,20 @@ function App() {
   const handleDocumentSelect = (document: Document) => {
     setSelectedDocument(document)
     setActiveTab('preview')
+    // Update current highlights when document is selected
+    setCurrentHighlights(highlightedMatches[document.id] || [])
+  }
+
+  const handleHighlightMatches = (documentId: string, matches: SearchMatch[]) => {
+    setHighlightedMatches(prev => ({
+      ...prev,
+      [documentId]: matches
+    }))
+    
+    // If this is the currently selected document, update current highlights
+    if (selectedDocument?.id === documentId) {
+      setCurrentHighlights(matches)
+    }
   }
 
   const handleDocumentDelete = async (documentId: string) => {
@@ -236,6 +252,7 @@ function App() {
                 <AISearchReplace
                   documents={documents}
                   onDocumentsUpdated={handleDocumentsUpdated}
+                  onHighlightMatches={handleHighlightMatches}
                 />
               </TabsContent>
 
@@ -296,6 +313,7 @@ function App() {
           <DocumentPreview 
             document={selectedDocument} 
             onDocumentUpdated={handleDocumentUpdated}
+            highlightedMatches={currentHighlights}
           />
         </div>
       </div>

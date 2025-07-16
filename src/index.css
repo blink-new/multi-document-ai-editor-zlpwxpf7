@@ -92,3 +92,32 @@
     @apply bg-accent/20 text-accent-foreground px-1 rounded;
   }
 }
+
+/* Custom styles for AI search highlighting */
+@layer utilities {
+  .search-highlight mark {
+    @apply bg-yellow-200 px-1 rounded;
+  }
+
+  /* Smooth transitions for highlight visibility */
+  mark {
+    transition: all 0.2s ease-in-out;
+  }
+
+  mark:hover {
+    @apply shadow-sm;
+  }
+
+  /* Different relevance levels for highlighting */
+  .highlight-high {
+    @apply bg-yellow-300 border-yellow-500;
+  }
+
+  .highlight-medium {
+    @apply bg-yellow-200 border-yellow-400;
+  }
+
+  .highlight-low {
+    @apply bg-yellow-100 border-yellow-300;
+  }
+}
